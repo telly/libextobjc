@@ -109,18 +109,19 @@
 				NSCAssert(NO, @"Unrecognized property memory management policy %i", (int)attributes->memoryManagementPolicy); \
 		} \
 		\
+		void(^setter)(id self, id value) = ^(id self, id value){ \
+			objc_setAssociatedObject(self, ext_uniqueKey_ ## CLASS ## _ ## PROPERTY, value, policy); \
+		}; \
+		\
         id getter = ^(id self){ \
             id obj = objc_getAssociatedObject(self, ext_uniqueKey_ ## CLASS ## _ ## PROPERTY); \
             if (!obj) { \
                 obj = [self INITIALIZER]; \
+                setter(self, obj); \
             } \
             \
             return obj; \
         }; \
-		\
-		id setter = ^(id self, id value){ \
-			objc_setAssociatedObject(self, ext_uniqueKey_ ## CLASS ## _ ## PROPERTY, value, policy); \
-		}; \
 		\
 		if (!class_addMethod(cls, attributes->getter, imp_implementationWithBlock(getter), "@@:")) { \
 			NSCAssert(NO, @"Could not add getter %s for property %@.%s", sel_getName(attributes->getter), cls, # PROPERTY); \

@@ -197,3 +197,61 @@
 		free(attributes); \
 	}
 
+
+#define synthesizeWithUserDefaultsBackend(CLASS, PROPERTY) \
+	dynamic PROPERTY; \
+	\
+	__attribute__((constructor)) \
+	static void ext_ ## CLASS ## _ ## PROPERTY ## _synthesize (void) { \
+		Class cls = objc_getClass(# CLASS); \
+		objc_property_t property = class_getProperty(cls, # PROPERTY); \
+		NSCAssert(property, @"Could not find property %s on class %@", # PROPERTY, cls); \
+		\
+		ext_propertyAttributes *attributes = ext_copyPropertyAttributes(property); \
+		if (!attributes) { \
+			NSLog(@"*** Could not copy property attributes for %@.%s", cls, # PROPERTY); \
+			return; \
+		} \
+		\
+		NSCAssert(!attributes->weak, @"@synthesizeAssociation does not support weak properties (%@.%s)", cls, # PROPERTY); \
+		\
+		objc_AssociationPolicy policy = OBJC_ASSOCIATION_ASSIGN; \
+		switch (attributes->memoryManagementPolicy) { \
+			case ext_propertyMemoryManagementPolicyRetain: \
+				policy = attributes->nonatomic ? OBJC_ASSOCIATION_RETAIN_NONATOMIC : OBJC_ASSOCIATION_RETAIN; \
+				break; \
+			\
+			case ext_propertyMemoryManagementPolicyCopy: \
+				policy = attributes->nonatomic ? OBJC_ASSOCIATION_COPY_NONATOMIC : OBJC_ASSOCIATION_COPY; \
+				break; \
+			\
+			case ext_propertyMemoryManagementPolicyAssign: \
+				break; \
+			\
+			default: \
+				NSCAssert(NO, @"Unrecognized property memory management policy %i", (int)attributes->memoryManagementPolicy); \
+		} \
+		\
+		NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults]; \
+		NSString *key = [NSString stringWithFormat:@"ext_defaults_key_%s_%s", # CLASS, # PROPERTY]; \
+		\
+		void(^setter)(id self, id value) = ^(id self, id value){ \
+			[defaults setObject:value forKey:key]; \
+			[defaults synchronize]; \
+		}; \
+		\
+        id getter = ^(id self){ \
+            return [defaults objectForKey:key]; \
+        }; \
+		\
+		if (!class_addMethod(cls, attributes->getter, imp_implementationWithBlock(getter), "@@:")) { \
+			NSCAssert(NO, @"Could not add getter %s for property %@.%s", sel_getName(attributes->getter), cls, # PROPERTY); \
+		} \
+		\
+		if (!class_addMethod(cls, attributes->setter, imp_implementationWithBlock(setter), "v@:@")) { \
+			NSCAssert(NO, @"Could not add setter %s for property %@.%s", sel_getName(attributes->setter), cls, # PROPERTY); \
+		} \
+		\
+		free(attributes); \
+	}
+
